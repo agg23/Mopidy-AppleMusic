@@ -5,12 +5,10 @@ import os
 
 from mopidy import config, exceptions, ext
 
-
 __version__ = '0.1'
 
 # If you need to log, use loggers named after the current Python module
 logger = logging.getLogger(__name__)
-
 
 class Extension(ext.Extension):
 
@@ -48,8 +46,8 @@ class Extension(ext.Extension):
         # registry.add('frontend', SoundspotFrontend)
 
         # Register a backend
-        # from .backend import SoundspotBackend
-        # registry.add('backend', SoundspotBackend)
+        from .backend import AppleMusicBackend
+        registry.add('backend', AppleMusicBackend)
 
         # Or nothing to register e.g. command extension
         pass
