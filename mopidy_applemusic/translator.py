@@ -22,3 +22,15 @@ def albumToRef(album):
         firstArtist = False
     
     return Ref.directory(uri=album.uri, name=name)
+
+def trackToRef(track):
+    """Convert a mopidy track to a mopidy ref."""
+    name = track.name
+    if (len(track.artists)) > 0:
+        name += ' - '
+    for artist in track.artists:
+        if len(name) > 0:
+            name += ', '
+        name += artist.name
+
+    return Ref.track(uri=track.uri, name=name)

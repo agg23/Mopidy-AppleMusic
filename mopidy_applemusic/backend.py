@@ -2,7 +2,7 @@ import pykka
 
 from mopidy import backend, models
 from mopidy_applemusic import logger
-from mopidy_applemusic.translator import albumToRef
+from mopidy_applemusic.translator import albumToRef, trackToRef
 
 from applepymusic import AppleMusicClient
 
@@ -11,6 +11,7 @@ MY_ALBUMS = 'applemusic:myalbums'
 
 ARTIST_PREFIX = 'applemusic:artist:'
 ALBUM_PREFIX = 'applemusic:album:'
+TRACK_PREFIX = 'applemusic:track:'
 
 class AppleMusicBackend(pykka.ThreadingActor, backend.Backend):
     def __init__(self, config, audio):
@@ -43,15 +44,42 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
 
     def browse(self, uri):
         logger.info("Browse %s", uri)
+        parts = uri.split(':')
+        prefix = ''
+
+        if len(parts) > 1:
+            prefix = ':'.join(parts[0:2]) + ':'
+
+        logger.info("Prefix %s", prefix)
+
         if uri == ROOT:
+            logger.info("Browsing root")
             return self.sub_directory
+
+        # All albums
         elif uri == MY_ALBUMS:
+            logger.info("Browsing my albums")
             return self.browseAlbums()
+
+        # Single album
+        elif prefix == ALBUM_PREFIX:
+            logger.info("Browsing album")
+            return self.browseAlbum(parts[2])
+
         logger.info(self.appleMusicClient.user_songs(limit=10))
         pass
 
     def lookup(self, uri):
         logger.info("Looking up %s", uri)
+
+        parts = uri.split(':')
+        prefix = ''
+
+        if len(parts) > 1:
+            prefix = ':'.join(parts[0:2]) + ':'
+
+        if prefix == TRACK_PREFIX:
+            return self.lookupTrack(parts[2])
         pass
 
     # Helper Methods #
@@ -68,6 +96,40 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
             return []
 
         return list(map(lambda album: albumToRef(album), self.albumDataToRefs(albumData)))
+
+    def browseAlbum(self, albumId):
+        album = self.appleMusicClient.user_get_album(albumId, include=['artists'])
+
+        # logger.info(album)
+
+        albumData = album['data']
+
+        if not albumData:
+            logger.error("Could not load album")
+            return []
+
+        albumRef = self.albumDataToRefs(albumData)[0]
+
+        logger.info(albumRef)
+
+        return list(map(lambda track: trackToRef(track), self.trackRelationshipsToRefs(albumData[0]['relationships'], albumRef)))
+
+    def lookupTrack(self, trackId):
+        track = self.appleMusicClient.get_play_song(trackId)
+        songList = track['songList']
+
+        if len(songList) != 1:
+            logger.error("Could not load track %s", trackId)
+            return []
+        
+        trackData = songList[0]
+        assets = trackData['assets'][0]
+        metadata = assets['metadata']
+
+        url = assets['URL']
+        name = metadata['itemName']
+
+        return [models.Track(uri=url, name=name)]
 
     # Reference Builders #
 
@@ -101,6 +163,24 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
             artists.append(artist)
 
         return artists
+
+    def trackRelationshipsToRefs(self, relationships, albumRef):
+        tracks = []
+
+        if not relationships['tracks']:
+            return []
+
+        for artistJSON in relationships['tracks']['data']:
+            uri = TRACK_PREFIX + artistJSON['id']
+            name = artistJSON['attributes']['name']
+            artists = albumRef.artists
+            length = artistJSON['attributes']['durationInMillis']
+
+            # track = models.Track(uri=uri, name=name, artists=artists, album=albumRef, length=length)
+            track = models.Track(uri=uri, name=name, album=albumRef, length=length)
+            tracks.append(track)
+
+        return tracks
 
 class AppleMusicPlaybackProvider(backend.PlaybackProvider):
     def __init__(self, audio, backend, appleMusicClient):
