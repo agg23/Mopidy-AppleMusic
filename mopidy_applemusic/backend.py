@@ -200,9 +200,35 @@ class AppleMusicPlaybackProvider(backend.PlaybackProvider):
 
     def translate_uri(self, uri):
         logger.info("Attempting to translate uri %s", uri)
-        # track = resolve_track(uri, True)
-        return uri
+
+        parts = uri.split(':')
+
+        if len(parts) < 1:
+            return None
+
+        track = self.lookupTrack(parts[len(parts)-1])
+
+        logger.info("Selected track url %s", track)
+
         if track is not None:
-            return track.uri
+            return track
         else:
             return None
+
+        
+    def lookupTrack(self, trackId):
+        track = self.appleMusicClient.get_play_song(trackId)
+        songList = track['songList']
+
+        if len(songList) != 1:
+            logger.error("Could not load track %s", trackId)
+            return None
+        
+        trackData = songList[0]
+        
+        assets = trackData['assets'][0]
+        metadata = assets['metadata']
+
+        url = assets['URL']
+
+        return url
