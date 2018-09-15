@@ -42,6 +42,8 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
             models.Ref.directory(uri=MY_ALBUMS, name='Albums')
         ]
 
+        self.trackCache = {}
+
     def browse(self, uri):
         logger.info("Browse %s", uri)
         parts = uri.split(':')
@@ -79,15 +81,13 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
             prefix = ':'.join(parts[0:2]) + ':'
 
         if prefix == TRACK_PREFIX:
-            return self.lookupTrack(parts[2])
+            return self.lookupTrack(parts[2], uri)
         pass
 
     # Helper Methods #
 
     def browseAlbums(self):
         albums = self.appleMusicClient.user_albums(limit=10, include=['artists'])
-
-        logger.info(albums)
 
         albumData = albums['data']
 
@@ -100,8 +100,6 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
     def browseAlbum(self, albumId):
         album = self.appleMusicClient.user_get_album(albumId, include=['artists'])
 
-        # logger.info(album)
-
         albumData = album['data']
 
         if not albumData:
@@ -112,24 +110,37 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
 
         logger.info(albumRef)
 
-        return list(map(lambda track: trackToRef(track), self.trackRelationshipsToRefs(albumData[0]['relationships'], albumRef)))
+        tracks = self.trackRelationshipsToRefs(albumData[0]['relationships'], albumRef)
+        trackRefs = []
 
-    def lookupTrack(self, trackId):
-        track = self.appleMusicClient.get_play_song(trackId)
-        songList = track['songList']
+        for track in tracks:
+            if not track:
+                continue
+            
+            self.trackCache[track.uri] = track
+            trackRefs.append(trackToRef(track))
 
-        if len(songList) != 1:
+        return trackRefs
+
+    def lookupTrack(self, trackId, uri):
+        if self.trackCache[uri]:
+            return [self.trackCache[uri]]
+        
+        trackJSON = self.appleMusicClient.user_get_song(trackId)
+        trackData = trackJSON['data']
+
+        if len(trackData) != 1:
             logger.error("Could not load track %s", trackId)
             return []
+
+        name = trackJSON['attributes']['name']
+        length = trackJSON['attributes']['durationInMillis']
+
+        track = models.Track(uri=uri, name=name, album=albumRef, length=length)
+
+        self.trackCache[uri] = track
         
-        trackData = songList[0]
-        assets = trackData['assets'][0]
-        metadata = assets['metadata']
-
-        url = assets['URL']
-        name = metadata['itemName']
-
-        return [models.Track(uri=url, name=name)]
+        return [track]
 
     # Reference Builders #
 
@@ -170,11 +181,11 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
         if not relationships['tracks']:
             return []
 
-        for artistJSON in relationships['tracks']['data']:
-            uri = TRACK_PREFIX + artistJSON['id']
-            name = artistJSON['attributes']['name']
+        for trackJSON in relationships['tracks']['data']:
+            uri = TRACK_PREFIX + trackJSON['id']
+            name = trackJSON['attributes']['name']
             artists = albumRef.artists
-            length = artistJSON['attributes']['durationInMillis']
+            length = trackJSON['attributes']['durationInMillis']
 
             # track = models.Track(uri=uri, name=name, artists=artists, album=albumRef, length=length)
             track = models.Track(uri=uri, name=name, album=albumRef, length=length)
