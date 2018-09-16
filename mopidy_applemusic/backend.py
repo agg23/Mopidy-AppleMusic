@@ -87,7 +87,7 @@ class AppleMusicLibraryProvider(backend.LibraryProvider):
     # Helper Methods #
 
     def browseAlbums(self):
-        albums = self.appleMusicClient.user_albums(limit=10, include=['artists'])
+        albums = self.appleMusicClient.user_albums(limit=100, include=['artists'])
 
         albumData = albums['data']
 
