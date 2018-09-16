@@ -5,6 +5,10 @@ Mopidy-AppleMusic
 `Mopidy <http://www.mopidy.com/>`_ extension for playing music from
 Apple Music/iCloud Music Library.
 
+*Note:* Unfortunately Apple Music audio files are protected by Widevine or Fairplay
+encryption (depending on the requesting OS). As such they cannot be played through
+this extension. However, user uploaded tracks (through iTunes Match or Apple Music)
+are not encrypted and can be played without issue.
 
 Installation
 ============
